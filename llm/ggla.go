@@ -35,7 +35,7 @@ type ggla struct {
 	*containerGGLA
 
 	kv      KV
-	tensors []Tensor
+	tensors []*Tensor
 }
 
 func newGGLA(container *containerGGLA) *ggla {
@@ -45,24 +45,41 @@ func newGGLA(container *containerGGLA) *ggla {
 	}
 }
 
-func (m *ggla) decode(rs io.ReadSeeker) error {
+func (llm *ggla) KV() KV {
+	return llm.kv
+}
+
+func (llm *ggla) Tensors() Tensors {
+	return llm.tensors
+}
+
+func (llm *ggla) decode(rs io.ReadSeeker) (retErr error) {
 	var r uint32
 	if err := binary.Read(rs, binary.LittleEndian, &r); err != nil {
 		return err
 	}
-	m.kv["r"] = r
+	llm.kv["r"] = r
 
 	var alpha uint32
 	if err := binary.Read(rs, binary.LittleEndian, &alpha); err != nil {
 		return err
 	}
-	m.kv["alpha"] = alpha
+	llm.kv["alpha"] = alpha
 
 	for {
 		var dims uint32
 		if err := binary.Read(rs, binary.LittleEndian, &dims); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
+
+		defer func() {
+			if errors.Is(retErr, io.EOF) {
+				retErr = io.ErrUnexpectedEOF
+			}
+		}()
 
 		var namesize uint32
 		if err := binary.Read(rs, binary.LittleEndian, &namesize); err != nil {
@@ -100,7 +117,7 @@ func (m *ggla) decode(rs io.ReadSeeker) error {
 			return err
 		}
 
-		if _, err := rs.Seek((offset+31)&-32, io.SeekStart); err != nil {
+		if _, err := rs.Seek((offset+31)&-32-offset, io.SeekCurrent); err != nil {
 			return err
 		}
 
@@ -111,54 +128,10 @@ func (m *ggla) decode(rs io.ReadSeeker) error {
 
 		t.Offset = uint64(offset)
 
-		if _, err := rs.Seek(int64(t.size()), io.SeekCurrent); err != nil {
+		if _, err := rs.Seek(int64(t.Size()), io.SeekCurrent); err != nil {
 			return err
 		}
 
-		m.tensors = append(m.tensors, t)
+		llm.tensors = append(llm.tensors, &t)
 	}
-}
-
-func (m *ggla) KV() KV {
-	return m.kv
-}
-
-func (m *ggla) Tensor() []Tensor {
-	return m.tensors
-}
-
-func (*ggla) ModelFamily() string {
-	return "ggla"
-}
-
-func (*ggla) ModelType() string {
-	panic("not implemented")
-}
-
-func (*ggla) FileType() string {
-	panic("not implemented")
-}
-
-func (*ggla) NumLayers() uint32 {
-	panic("not implemented")
-}
-
-func (*ggla) NumGQA() uint32 {
-	panic("not implemented")
-}
-
-func (*ggla) NumEmbed() uint32 {
-	panic("not implemented")
-}
-
-func (*ggla) NumHead() uint32 {
-	panic("not implemented")
-}
-
-func (*ggla) NumHeadKv() uint32 {
-	panic("not implemented")
-}
-
-func (*ggla) NumCtx() uint32 {
-	panic("not implemented")
 }
