@@ -587,9 +587,6 @@ type SamplingParams struct {
 	PenaltyRepeat  float32
 	PenaltyFreq    float32
 	PenaltyPresent float32
-	Mirostat       int
-	MirostatTau    float32
-	MirostatEta    float32
 	PenalizeNl     bool
 	Seed           uint32
 	Grammar        string
@@ -606,9 +603,6 @@ func NewSamplingContext(model *Model, params SamplingParams) (*SamplingContext, 
 	cparams.penalty_repeat = C.float(params.PenaltyRepeat)
 	cparams.penalty_freq = C.float(params.PenaltyFreq)
 	cparams.penalty_present = C.float(params.PenaltyFreq)
-	cparams.mirostat = C.int32_t(params.Mirostat)
-	cparams.mirostat_tau = C.float(params.MirostatTau)
-	cparams.mirostat_eta = C.float(params.MirostatEta)
 	cparams.seed = C.uint32_t(params.Seed)
 
 	grammar := C.CString(params.Grammar)
@@ -643,8 +637,8 @@ func SchemaToGrammar(schema []byte) []byte {
 	cStr := C.CString(string(schema))
 	defer C.free(unsafe.Pointer(cStr))
 
-	// Allocate buffer for grammar output with reasonable size
-	const maxLen = 32768 // 32KB
+	// Allocate buffer for grammar based on schema length but with upper bound
+	maxLen := min(1024*1024, len(schema)*4)
 	buf := make([]byte, maxLen)
 
 	// Call C function to convert schema to grammar
